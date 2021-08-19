@@ -66,21 +66,30 @@ s = activate math
 d = activate dark
 f = activate css
 
+Maj+T= active tex
+Maj+D = active DARKMODE
+Maj+S = active style
+
 E = Exporter# TODO
-Backspace = Delete# TODO
-N = Nouveau Mode  # TODO
-N+C = Nouveau Chapitre# TODO
-N+D = Nouveau Document# TODO
-N+P = Nouvelle Partie# TODO
+Maj+E = Exporter All# TODO
+Maj+Backspace = Delete# TODO
+Maj+M = Nouveau Matiere# TODO
+Maj+I = Nouveau INtercaliare# TODO
+Maj+C = Nouveau Cours en Markdown# TODO
+Maj+F = Nouveau Cours en with File# TODO
 
 hjkl ←↓↑→ Enter = Navigate# TODO
 
 q = exit
 
+Feature not required:
+	Change CSS
+	H = help menu inside and ouside
+	windows and mac compatibility
+	Config
+	Agenda / todolist
+
 Todo:
     Finir
-        Box
-            Acctions
-        TODO Things
     Eporter tout en html et le faire visible pour le mettre sur pages 
     Faire une meilleur verison de vim

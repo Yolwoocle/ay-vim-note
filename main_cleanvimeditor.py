@@ -2,13 +2,14 @@
 # https://stackoverflow.com/questions/13207678/whats-the-simplest-way-of-detecting-keyboard-input-in-a-script-from-the-terminal
 
 import os
+import time
 import re
 import signal
 import sys
 import threading
 from select import select
 
-on_linux = not "win" in sys.platform
+on_linux = "win" not in sys.platform
 if on_linux:
 	import tty
 	import fcntl
@@ -16,7 +17,6 @@ if on_linux:
 
 	show_os_infos = True
 	backlight_folder = "intel_backlight"  # for find this, do ls /sys/class/backlight
-
 else:
 	show_os_infos = False
 	import ctypes
@@ -141,8 +141,8 @@ mouse_direct_off = "\033[?1003l"  # * Disable direct mouse reporting
 
 
 class Actions:
-	# mouse_pos=mouse_pos,    click_state=click_state, clean_key=clean_key             ,input_save=input_save
-	# Pos mouse type: (x, y), up or down             , key du type: escape ou mouse_..., key du type: \033[..
+	# mouse_pos=mouse_pos,	click_state=click_state, clean_key=clean_key			 ,input_save=input_save
+	# Pos mouse type: (x, y), up or down			 , key du type: escape ou mouse_..., key du type: \033[..
 	dico_actions = {}
 
 	@classmethod
@@ -159,9 +159,9 @@ class Actions:
 			"f": cls.change_opts,
 			"e": cls.export,
 			"g": cls.colapse,
-			"backspace": cls.delete,
+			"\x1b[3;2~": cls.delete,  # Shift+Backspace
 			"q": cls.exit,
-			"n": Infos.change_brightness,
+			# "n": Infos.change_brightness,
 			"\x1b[A": cls.arrow,
 			"k": cls.arrow,
 			"\x1b[B": cls.arrow,
@@ -170,10 +170,65 @@ class Actions:
 			"l": cls.arrow,
 			"\x1b[D": cls.arrow,
 			"h": cls.arrow,
-			"\x1b[D": cls.arrow,
 			"\n": cls.open_vim,
-			"\x1bOQ": cls.rename, # F2
+			"\x1bOQ": cls.rename,  # F2
+			"M": cls.new_doc,
+			"I": cls.new_doc,
+			"C": cls.new_doc,
+			"F": cls.new_doc
 		}
+
+	@classmethod
+	def new_doc(cls, new_doc=None, **kwargs):
+		key = kwargs["clean_key"]
+		name = {"M": "Matière", "I": "Intercalaire", "C": f"Cours in {Infos.cours_index} TODO", "F": f"Cours.file in {Infos.cours_index} TODO"}[key]
+		# On autorise les point si on choisit les extention
+		new_doc_regex = "[^A-Za-z0-9_à-öÀ-Ö]" if not key=="F" else "[^A-Za-z0-9_à-öÀ-Ö.]"
+		if new_doc is None:
+			new_doc = re.sub(new_doc_regex, "", Infos.write_message("Nouveau " + name, True))
+		if new_doc == "Intro":
+			raise FileExistsError("Imposible de nomer un fichier/dossier 'Intro'")
+		if key == "M":
+			if new_doc in Infos.data_path.keys():
+				raise FileExistsError(f"'{new_doc}' already exists")
+			os.mkdir(Infos.path + "/notes/" + new_doc)
+			os.mkdir(Infos.path + "/notes/" + new_doc + "/0.Intro")
+		elif key == "I":
+			# Crée le dossier 0.Infos et recload comman avec l'argumet new_doc
+			if len(Infos.data_path[Infos.matiere_index].keys()) == 0:  
+				os.mkdir(Infos.path + "/notes/" + Infos.matiere_index + "/0.Intro")
+				Infos.load_data()
+				cls.new_doc(new_doc=new_doc, clean_key="I")
+				return
+			if new_doc in [re.sub("^[0-9.]+", "", i) for i in Infos.data_path[Infos.matiere_index].keys()]:
+				raise FileExistsError(f"'{new_doc}' already exists in {Infos.matiere_index}")
+			os.mkdir(Infos.path + "/notes/" + Infos.matiere_index + "/" + str(
+				len(Infos.data_path[Infos.matiere_index].keys())) + "." + new_doc)
+		elif key == "C" or key == "F":
+			if Infos.inter_index is None:
+				inter_dico = Infos.data_path[Infos.matiere_index][Infos.cours_index]
+				inter_name = Infos.cours_index
+			else:
+				inter_dico = Infos.data_path[Infos.matiere_index][Infos.inter_index]
+				inter_name = Infos.inter_index
+			nb_file_in_inter = len(inter_dico[1:])  # [1:] est pour enlever le bool au debut qui montre le visible
+			match = re.match("^[0-9]*", inter_name)
+			if match is not None:
+				inter_number = match.group(0)
+			gen_path = Infos.generate_path()
+			# TODO verifier si il exsiste le chemin exsiste
+			if key=="C":
+				if gen_path[3]:
+					with open(gen_path[4]+"/"+str(inter_number)+"."+str(nb_file_in_inter)+"."+new_doc+".md", "w") as f:
+						f.write("# "+new_doc)
+			else:  # key = F
+				if gen_path[3]:
+					with open(gen_path[4]+"/"+str(inter_number)+"."+str(nb_file_in_inter)+"."+new_doc, "w") as f:
+						f.write("")
+		else:
+			raise NotImplementedError("Vous êtes pas censé avoir une autre key qui M,I,C pour lancer new_doc")
+		Infos.load_data()
+		Infos.reload()
 
 	@classmethod
 	def rename(cls, **_):
@@ -181,15 +236,16 @@ class Actions:
 		if not (gen_path[1] or gen_path[2]):
 			return "Vous pouvez pas rename un fichier non indexer"
 		# file_name = gen_path[0].split("/")[-1]
-		match = re.search("(.+)\/([0-9.]+)\.(.+)", gen_path[0])
+		match = re.search("(.+)/([0-9.]+)\\.(.+)", gen_path[0])
 		if match is not None:
 			new_name = Infos.write_message(f"Rename {match.group(3)}", True)
 			# raise Exception(f"{gen_path[0]} to {match.group(1)+'/'+match.group(2)+'.'+new_name}")
-			new_path = match.group(1)+'/'+match.group(2)+'.'+new_name
+			new_path = match.group(1) + '/' + match.group(2) + '.' + new_name
 			os.rename(gen_path[0], new_path)
-			Infos.cours_index = match.group(2)+'.'+new_name
-			Infos.load_data()	
+			Infos.cours_index = match.group(2) + '.' + new_name
+			Infos.load_data()
 			Infos.box_app(1)
+
 	@classmethod
 	def colapse(cls, **_):
 		gen_path = Infos.generate_path()
@@ -197,16 +253,18 @@ class Actions:
 			matiere_index = Infos.data_path[Infos.matiere_index]
 			matiere_index[Infos.inter_index][0] = not matiere_index[Infos.inter_index][0]
 			Infos.cours_index = Infos.inter_index
-		elif gen_path[2]:  # C'est un Dossier 
+		elif gen_path[2]:  # C'est un Dossier
 			matiere_index = Infos.data_path[Infos.matiere_index]
 			matiere_index[Infos.cours_index][0] = not matiere_index[Infos.cours_index][0]
 		else:
 			pass
 		Infos.box_app(1)
-		Infos.write_message(f"Box : {str(Infos.data_path[Infos.matiere_index])+str(Infos.cours_index)+str(Infos.inter_index)}")
+		Infos.write_message(
+			f"Box : {str(Infos.data_path) + str(Infos.cours_index) + str(Infos.inter_index)}")
 		pass
+
 	@classmethod
-	def open_vim(cls, **kwargs):
+	def open_vim(cls, **_):
 		gen_path = Infos.generate_path()
 		if gen_path[1]:
 			Infos.vim_is_launched = True
@@ -218,8 +276,10 @@ class Actions:
 	def arrow(cls, **kwargs):
 		key = kwargs["clean_key"]
 		action = None
-		if key == "\x1b[A" or key == "k": action = "Up"
-		if key == "\x1b[B" or key == "j": action = "Down"
+		if key == "\x1b[A" or key == "k":
+			action = "Up"
+		if key == "\x1b[B" or key == "j":
+			action = "Down"
 		if key == "\x1b[D" or key == "h":
 			action = "Left"
 			Infos.change_current_page(False)
@@ -234,9 +294,10 @@ class Actions:
 			if action == "Down":
 				Infos.matiere_index = matieres[(current_matiere_index + 1) % len(matieres)]
 			Infos.box_app(0)
-		if Infos.current_page == 1:  # Sur la Page Cours 
+		if Infos.current_page == 1:  # Sur la Page Cours
 			if action in ("Up", "Down"):
 				if len(Infos.tmp_list) != 0:
+					new_index = ""
 					item_index = -1
 					for index, i in enumerate(Infos.tmp_list):
 						if re.search("\x1b\\[33m", i) is not None:
@@ -264,7 +325,7 @@ class Actions:
 	@classmethod
 	def change_args(cls, **kwargs):
 		change_data = Infos.dico_name_id[kwargs["clean_key"]]
-		# Infos.sp_alpha 
+		# Infos.sp_alpha
 		if Infos.sp_alpha & 2 ** change_data != 0:
 			Infos.sp_alpha -= 2 ** change_data
 		else:
@@ -290,16 +351,16 @@ class Actions:
 			print("click circle 20,50")
 
 	@classmethod
-	def pos_in_square(cls, mouse_pos: tuple[int, int], x1: int, y1: int, x2: int, y2: int) -> bool:
+	def pos_in_square(cls, mouse_pos: tuple[int, int], x1: int, y1: int, x2: int, y2: int):
 		# Verifies si mouse_pos(tuple: (int, int)) est dans le rectangle x1, y1, x2, y2
 		return x1 <= mouse_pos[0] < x2 and y1 <= mouse_pos[0] < y2
 
 	@classmethod
-	def pos_in_circle(cls, mouse_pos: tuple[int, int], x1: int, y1: int, rayon: int) -> bool:
+	def pos_in_circle(cls, mouse_pos, x1, y1, rayon):
 		return (x1 - mouse_pos[0]) ** 2 + (y1 - mouse_pos[1]) ** 2 < rayon ** 2
 
 	@classmethod
-	def pos_in_pos(cls, mouse_pos: tuple[int, int], x1: int, y1: int) -> bool:
+	def pos_in_pos(cls, mouse_pos, x1, y1):
 		return (x1 == mouse_pos[0]) and (y1 == mouse_pos[1])
 
 
@@ -394,7 +455,8 @@ class Key:
 
 			if clean_key in Actions.dico_actions.keys():
 				if mouse_pos is not None:  # Si c'est une action souris
-					Actions.dico_actions[clean_key](mouse_pos=mouse_pos, click_state=click_state, clean_key=clean_key, input_save=input_save)
+					Actions.dico_actions[clean_key](mouse_pos=mouse_pos, click_state=click_state, clean_key=clean_key,
+													input_save=input_save)
 				else:
 					Actions.dico_actions[clean_key](clean_key=clean_key, input_save=input_save)
 			if debug:
@@ -436,16 +498,19 @@ class Key:
 
 class Draw:
 	x: int = 0
+
 	@classmethod
 	def _do_draw(cls):
+		return # It's useless for now
 		while not cls.stopping:
+			time.sleep(5)
 			if exit_event.is_set():
 				break
 			if Infos.vim_is_launched:
 				pass
 			else:
 				pass
-				# Infos.write_message(f"Box : {str(Infos.data_path) + '    '}")
+			# Infos.write_message(f"Box : {str(Infos.data_path) + '	'}")
 
 	# SET CODE HERE: ne pas metre de code bloquant: code qui nécessite une action de l'utilisateur
 
@@ -538,7 +603,7 @@ class Infos:
 	size = os.get_terminal_size()
 	min_size = (30, 20)
 	sp_alpha = 1 + 2 + 4 + 8 + 16  # 1 = M, 2=C, 4=T, 8=I, 16=A, 32=V
-	#          0 1 2 3 4  5
+	#		  0 1 2 3 4  5
 	opts_alpha = 1 + 2 + 4  # 1 = math, 2=Dark, 4=css
 	current_page = 0
 	path = None
@@ -572,7 +637,7 @@ class Infos:
 	data_path = {}
 	matiere_index = "Nsi"  # TODO
 	inter_index = "0.Intro"
-	cours_index = "0.1.Ques"
+	cours_index = "0.0.Intro"
 	tmp_list = []
 	toc_position = 0
 	toc_data = []  # Liste de tuples (1-6, "Titre")
@@ -619,6 +684,7 @@ class Infos:
 				cls.os_infos[key]['max_brightness'])
 			print(cls.os_infos)
 
+	""" FEATURE
 	@classmethod
 	def change_brightness(cls, add=True, **_):
 		# Is perm of root, donc ca marche pas
@@ -629,6 +695,7 @@ class Infos:
 			print(f"\033[1:{cls.size[1]}H")
 			os.system("sudo chmod u+w /sys/class/backlight/" + backlight_folder + "/brightness")
 		cls.actulise_os_infos("luminosity")
+	"""
 
 	# Is call at every time terminal is resized
 	@classmethod
@@ -660,9 +727,12 @@ class Infos:
 		# Return le chemin, si c'est un fichier, si c'est un dossier, si c'est un folder
 		if cls.inter_index is None:
 			path = cls.path + "/notes/" + cls.matiere_index + "/" + cls.cours_index
+			inter = cls.path + "/notes/" + cls.matiere_index + "/" + cls.cours_index
 		else:
 			path = cls.path + "/notes/" + cls.matiere_index + "/" + str(cls.inter_index) + "/" + cls.cours_index
-		return path, os.path.isfile(path), os.path.isdir(path)
+			inter = cls.path + "/notes/" + cls.matiere_index + "/" + str(cls.inter_index) 
+		is_file, is_dir = os.path.isfile(path), os.path.isdir(path), 
+		return path, is_file, is_dir, (is_file or is_dir), inter
 
 	@classmethod
 	def generate_infos(cls, toc=True, infos=True, visual=True):
@@ -674,18 +744,24 @@ class Infos:
 			if toc:
 				cls.toc_data = []
 				for i in cls.file_data.split("\n"):
-					tmp_match = re.match("(#{1,6})\s(.+)", i)
+					tmp_match = re.match("(#{1,6})\\s(.+)", i)
 					if tmp_match is not None:
 						cls.toc_data += [(len(tmp_match.group(1)), tmp_match.group(2))]
-					
+
 			if infos:
-				cls.infos_data = {"Path": cls.matiere_index + "/" + str(cls.inter_index) + "/" + cls.cours_index, "Name": cls.cours_index, "Mots": len(cls.file_data.split()), "Char": len(cls.file_data), "Line": len(re.findall("\n", cls.file_data)), "Type": "File"}
-			if visual: pass
+				cls.infos_data = {"Path": cls.matiere_index + "/" + str(cls.inter_index) + "/" + cls.cours_index,
+								  "Name": cls.cours_index, "Mots": len(cls.file_data.split()),
+								  "Char": len(cls.file_data), "Line": len(re.findall("\n", cls.file_data)),
+								  "Type": "File"}
+			if visual:
+				pass
 		elif gen_path[2]:
 			if toc:
 				cls.toc_data = "Folder"
 			if infos:
-				cls.infos_data = {"Path": cls.matiere_index + "/" + cls.cours_index,"Fold": Infos.data_path[Infos.matiere_index][Infos.cours_index][0], "Name": cls.cours_index, "Type": "Folder"}
+				cls.infos_data = {"Path": cls.matiere_index + "/" + cls.cours_index,
+								  "Fold": Infos.data_path[Infos.matiere_index][Infos.cours_index][0],
+								  "Name": cls.cours_index, "Type": "Folder"}
 		else:
 			if toc:
 				cls.toc_data = "Undefined"
@@ -730,27 +806,32 @@ class Infos:
 			cls.actulise_os_infos("luminosity")
 
 	@classmethod
-	def set_data(cls, id, x, y, width, height):  # TODO
-		cls.sp_dico[id].x = x
-		cls.sp_dico[id].y = y
-		cls.sp_dico[id].width = width
-		cls.sp_dico[id].height = height
+	def set_data(cls, p_id, x, y, width, height):  # TODO
+		cls.sp_dico[p_id].x = x
+		cls.sp_dico[p_id].y = y
+		cls.sp_dico[p_id].width = width
+		cls.sp_dico[p_id].height = height
 
 	@classmethod
 	def load_data(cls):
 		path_n = cls.path + "/notes"
-		data_path = [os.path.join(path_n, f).split("/")[-1] for f in sorted(os.listdir(path_n)) if os.path.isdir(os.path.join(path_n, f))]  # Pours toutes les matiere
+		data_path = [os.path.join(path_n, f).split("/")[-1] for f in sorted(os.listdir(path_n)) if
+					 os.path.isdir(os.path.join(path_n, f))]  # Pours toutes les matiere
 		for i in data_path:
 			path_i = cls.path + "/notes/" + i
-			cours_path = [os.path.join(path_i, f).split("/")[-1] for f in sorted(os.listdir(path_i)) if os.path.isdir(os.path.join(path_i, f))]  # Pour touts les intercalaire de cours
-			cls.data_path[i] = {k: [True]+[os.path.join(path_i + "/" + k, f).split("/")[-1] for f in sorted(os.listdir(path_i + "/" + k)) if os.path.isfile(os.path.join(path_i + "/" + k, f))] for k in cours_path}
+			cours_path = [os.path.join(path_i, f).split("/")[-1] for f in sorted(os.listdir(path_i)) if
+						  os.path.isdir(os.path.join(path_i, f))]  # Pour touts les intercalaire de cours
+			cls.data_path[i] = {k: [True] + [os.path.join(path_i + "/" + k, f).split("/")[-1] for f in
+											 sorted(os.listdir(path_i + "/" + k)) if
+											 os.path.isfile(os.path.join(path_i + "/" + k, f))] for k in cours_path}
 
 	@classmethod
-	def box_app(cls, id):  # Error to fix
+	def box_app(cls, a_id):  # Error to fix
 		def verifie_page(p_id):
-			if Infos.sp_alpha & 2**5 != 0 and 2<=p_id<=4 :
-				return False				
-			return id==p_id and Infos.sp_alpha & 2**p_id !=0
+			if Infos.sp_alpha & 2 ** 5 != 0 and 2 <= p_id <= 4:
+				return False
+			return a_id == p_id and Infos.sp_alpha & 2 ** p_id != 0
+
 		if verifie_page(0):  # Liste touts les fichiers dans le $PATH
 			for index, i in enumerate(cls.data_path.keys()):
 				color = ("\033[33m" if i == cls.matiere_index else "")
@@ -763,7 +844,7 @@ class Infos:
 			cls.tmp_list = []
 			cls.inter_index = None
 			for i in cls.data_path[cls.matiere_index].keys():
-				visible_inter = cls.data_path[cls.matiere_index][i][0]	
+				visible_inter = cls.data_path[cls.matiere_index][i][0]
 				if visible_inter:
 					tmp_comp_list = []
 					for j in cls.data_path[cls.matiere_index][i][1:]:
@@ -801,9 +882,9 @@ class Infos:
 				sys.stdout.write(f"\033[{tmp_box.y + 3};{tmp_box.x + 2}HFichier vide")
 			else:
 				for hx, value in cls.toc_data:
-					sys.stdout.write(f"\033[{tmp_box.y + 3 + index};{tmp_box.x + 2}H{hx * '  '+'- '}{value}")
+					sys.stdout.write(f"\033[{tmp_box.y + 3 + index};{tmp_box.x + 2}H{hx * '  ' + '- '}{value}")
 					index += 1
-				
+
 		elif verifie_page(3):
 			# TODO clean Box
 			index = 0
@@ -864,24 +945,24 @@ class Infos:
 						width = cls.size[0] // (vertical_windows if vertical_windows != 0 else 1)
 						height = cls.size[1] // (horizontal_windows if horizontal_windows != 0 else 1)
 						cls.set_data(2 ** i, cls.size[0] // vertical_windows * vsp + 1,
-						             cls.size[1] // horizontal_windows * hsp + 1, width, height)
+									 cls.size[1] // horizontal_windows * hsp + 1, width, height)
 					hsp += 1
-		# ------------------------ action de la box 
+		# ------------------------ action de la box
 		for i in range(0, 6):
 			if cls.sp_alpha & 2 ** i != 0:
 				cls.box_app(i)
 
 		# ------------------------ show name
 		cls.show_name()
-		# ------------------------ view 
+		# ------------------------ view
 		for border in range(1, vertical_windows):
 			for i in range(cls.size[1] - 1):  # Pour tout la hauteur
 				sys.stdout.write(f"\033[{i};{cls.size[0] // vertical_windows * border}H\033[47m\033[30m\u2502\033[0m")
 		for border in range(1, horizontal_windows):
-
 			# for i in range(cls.size[0] // vertical_windows * (vertical_windows - 1), cls.size[0] + 1):  # For longueur
 			# 	sys.stdout.write(f"\033[{cls.size[1] // horizontal_windows * border};{i}H\033[47m\033[30m-\033[0m")
-			sys.stdout.write(f"\033[{cls.size[1] // horizontal_windows * border};{cls.size[0] // vertical_windows * (vertical_windows - 1)}H\033[47m\033[30m\u251c{'─'*((cls.size[0]//vertical_windows)-1)}\033[0m")
+			sys.stdout.write(
+				f"\033[{cls.size[1] // horizontal_windows * border};{cls.size[0] // vertical_windows * (vertical_windows - 1)}H\033[47m\033[30m\u251c{'─' * ((cls.size[0] // vertical_windows) - 1)}\033[0m")
 
 		# ------------------------ Message en bas dernière ligne
 		print("\033[1;1H")  # Besoin de ça mais il est deja dans le notif
@@ -891,11 +972,11 @@ class Infos:
 		# Faut éviter les couleurs ou escape key
 		# Sinon faut refaire le truc
 		if is_input:
-			sys.stdout.write(f"\033[{cls.size[1]};1H" + (" "*cls.size[0]))
+			sys.stdout.write(f"\033[{cls.size[1]};1H" + (" " * cls.size[0]))
 			the_input = input(f"\033[{cls.size[1]};1H" + msg + ":")
 			Infos.reload()
 			return the_input
-		sys.stdout.write(f"\033[{cls.size[1]};1H" + ((msg+(" "*cls.size[0]))[:cls.size[0]]))
+		sys.stdout.write(f"\033[{cls.size[1]};1H" + ((msg + (" " * cls.size[0]))[:cls.size[0]]))
 		print("\033[1;1H")
 
 	@classmethod
@@ -938,7 +1019,13 @@ def set_path():
 				return True
 			raise Exception("Il faut un fichier '/notes'")
 		raise Exception("Il faut choisir un fichier")
-	raise Exception("Il faut choisir un fichier")
+	else:
+		Infos.path = "/home/ay/Cours2022Git"
+		if os.path.isdir(Infos.path):
+			if os.path.isdir(Infos.path + "/notes"):
+				return True
+			raise Exception("Il faut un fichier '/notes'")
+		raise Exception("/home/ay/Cours2022Git not found")
 
 
 if __name__ == '__main__':
