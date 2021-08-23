@@ -1,0 +1,1 @@
+[{"vim_is_open":false,"col":151,"row":39,"boxs":{"M":{"name":"Matière","":""}}},{"editor":"vim","nerd_font":true,"icons":{"folder_close":"","folder_open":"","no_file":""},"ext_icons":{"unknown":"","md":"","image":""},"path":"/home/ay/Cours2022Git/notes"},{"M":{"name":"Matière","":""}}]

@@ -15,6 +15,7 @@ if on_linux:
 	import fcntl
 	import termios
 
+	
 	show_os_infos = True
 	backlight_folder = "intel_backlight"  # for find this, do ls /sys/class/backlight
 else:
@@ -22,6 +23,14 @@ else:
 	import ctypes
 	import msvcrt
 
+def split_line(ligne):
+	liste = []
+	width = Infos.sp_dico[2**5].width 
+	if len(ligne) > width:
+		liste += [ligne[:width]] + split_line(ligne[width:])
+	else:
+		liste += [ligne]
+	return liste
 if on_linux:
 	escape = {
 		"\n": "enter",
@@ -307,8 +316,9 @@ class Actions:
 						new_index = (item_index - 1) % len(Infos.tmp_list)
 					if action == "Down":
 						new_index = (item_index + 1) % len(Infos.tmp_list)
-					Infos.cours_index = re.sub("^(v\\s|>\\s|\\s\\s-\\s)", "", Infos.tmp_list[new_index], 1)
+					Infos.cours_index = re.sub(f"^({Infos.icons['folder_open']}\\s|{Infos.icons['folder_close']}\\s|\\s\\s[-{Infos.icons['no_file']}{Infos.all_file_type}]\\s)", "", Infos.tmp_list[new_index], 1)
 			Infos.box_app(1)
+			Infos.box_app(5)
 
 	@classmethod
 	def export(cls, **kwargs):
@@ -512,7 +522,7 @@ class Draw:
 				pass
 			# Infos.write_message(f"Box : {str(Infos.data_path) + '	'}")
 
-	# SET CODE HERE: ne pas metre de code bloquant: code qui nécessite une action de l'utilisateur
+	# SET23         print(mouse_on) CODE HERE: ne pas metre de code bloquant: code qui nécessite une action de l'utilisateur
 
 	# ---------------------------------------
 	stopping: bool = False
@@ -644,6 +654,20 @@ class Infos:
 	infos_data = {"Mots": None, "Char": None, "Line": None, "Type": "File"}
 	file_data = ""
 	editor = "vim"  # Choisir un editeur qui se lance avec le terminal
+	nerd_fonts = True 
+	if nerd_fonts:
+		ext_file_icons = {
+			".md": "\uf48a"
+		}
+		all_file_type = "".join(ext_file_icons.values())
+	else:
+		ext_file_icons = {}
+		all_file_type = ""
+	icons = {
+		"folder_close": "\uf07b" if nerd_fonts else ">",
+		"folder_open": "\uf07c" if nerd_fonts else "v",
+		"no_file": "\ue612" if nerd_fonts else "-",
+	}
 
 	@classmethod
 	def change_current_page(cls, positive=True, verifie=False):
@@ -684,7 +708,6 @@ class Infos:
 				cls.os_infos[key]['max_brightness'])
 			print(cls.os_infos)
 
-	""" FEATURE
 	@classmethod
 	def change_brightness(cls, add=True, **_):
 		# Is perm of root, donc ca marche pas
@@ -695,7 +718,6 @@ class Infos:
 			print(f"\033[1:{cls.size[1]}H")
 			os.system("sudo chmod u+w /sys/class/backlight/" + backlight_folder + "/brightness")
 		cls.actulise_os_infos("luminosity")
-	"""
 
 	# Is call at every time terminal is resized
 	@classmethod
@@ -853,10 +875,18 @@ class Infos:
 							cls.inter_index = i
 						else:
 							color = ""
-						tmp_comp_list += ["  - " + color + j]
-					cls.tmp_list += ["v " + ("\033[33m" if i == cls.cours_index else "") + i] + tmp_comp_list
+						match = re.search("\.[A-Za-z0-9_à-öÀ-Ö]+$",j)
+						if match is None:
+							before = cls.icons['no_file']
+						else:
+							if match.group(0) in cls.ext_file_icons.keys():
+								before = cls.ext_file_icons[match.group(0)]
+							else:
+								before = cls.icons['no_file'] 
+						tmp_comp_list += ["  "+before+" "+ color + j]
+					cls.tmp_list += [Infos.icons['folder_open'] + " " + ("\033[33m" if i == cls.cours_index else "") + i] + tmp_comp_list
 				else:
-					cls.tmp_list += ["> " + ("\033[33m" if i == cls.cours_index else "") + i]
+					cls.tmp_list += [Infos.icons['folder_close'] + " " + ("\033[33m" if i == cls.cours_index else "") + i]
 			if len(cls.tmp_list) != 0:
 				for index, i in enumerate(cls.tmp_list):
 					sys.stdout.write(f"\033[{index + 4};{3 + cls.sp_dico[2].x}H{i}\033[0m")
@@ -894,10 +924,22 @@ class Infos:
 			for key, value in cls.infos_data.items():
 				sys.stdout.write(f"\033[{tmp_box.y + 3 + index};{tmp_box.x + 4}H\033[33m{key}\033[0m {value}")
 				index += 1
-		elif verifie_page(4):
+		elif verifie_page(4):  # Attribute
 			pass
 		elif verifie_page(5):
-			pass
+			tmp_box = cls.sp_dico[2 ** 5]
+			for i in range(tmp_box.y, tmp_box.height + tmp_box.y-2):  # Clear Box
+				sys.stdout.write(f"\033[{i};{tmp_box.x}H{' ' * (tmp_box.width+1)}")
+			if cls.generate_path()[1]:  # si se n'est pas un fichier on annule
+				index = 0
+				file_data = []
+				for i in cls.file_data.split("\n"):
+					file_data += split_line(i)
+				for i in range(tmp_box.y, tmp_box.height + tmp_box.y-2):  # Clear Box
+					sys.stdout.write(f"\033[{i};{tmp_box.x}H{' ' * (tmp_box.width+1)}")
+				for value in file_data:
+					sys.stdout.write(f"\033[{tmp_box.y + index};{tmp_box.x}H{value}")
+					index += 1
 		print("\033[1;1H")
 
 	@classmethod
