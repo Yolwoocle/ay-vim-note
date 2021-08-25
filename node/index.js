@@ -127,15 +127,35 @@ function main(str, key){
 		console.table(box_data)
 	}
 	// STOP AND DROW Box
+	function print(x, y, str){
+		process.stdout.write("\033["+y+";"+x+"H"+str);
+	}
+	function showbox(x,y,col,row, whatshow=3){  // whatshow is 0<=whatshow<=3: 0 for no, 1, for border right, 2 for bottom , 3 for both
+		bottom = false;
+		right = false 
+		if(whatshow===0){ return }
+		if(whatshow===1){ right = true }
+		if(whatshow===2){ bottom = true }
+		if(whatshow===3){ bottom = true; right = true }
+		if(right){
+			for(let i=0; i>row; i++){
+				print(x+col, y+i, "X")
+			}
+		}
+		if(bottom){
+			print(x, y+row, "-".repeat(col))
+		}
+	}
 	if(str==="b"){
 		console.log( "\033[?1049h")// Alternatice screen
+		console.log( "\033[2J\033[1;1H")// Alternatice screen
 		process.stdin.pause()
-		var objectKeysArray = Object.keys(box_data)
-		objectKeysArray.forEach(function(objKey) {
-			var objValue = box_data[objKey]
-			console.log(objValue)
+		Object.keys(box_data).forEach(function(key) {
+			var value = box_data[key]
+			//console.log(objValue)
+			showbox(5,5, 30,30,3)
 		})
-
+		setInterval(()=>console.log(), 5000)
 		// box_data.forEach(name =>{console.log(name)})
 	}
 	if(str==="0"){generate_folder_data()}
@@ -146,7 +166,7 @@ function main(str, key){
 		launch_editor("test.txt")
 	}
 	console.log(str)
-	console.log(key)
+	// console.log(key)
 }
 
 process.on('SIGWINCH', () => {

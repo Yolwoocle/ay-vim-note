@@ -2,6 +2,7 @@
 # https://stackoverflow.com/questions/13207678/whats-the-simplest-way-of-detecting-keyboard-input-in-a-script-from-the-terminal
 
 import os
+import subprocess
 import time
 import re
 import signal
@@ -167,6 +168,7 @@ class Actions:
 			"d": cls.change_opts,
 			"f": cls.change_opts,
 			"e": cls.export,
+			"E": cls.export_all,
 			"g": cls.colapse,
 			"\x1b[3;2~": cls.delete,  # Shift+Backspace
 			"q": cls.exit,
@@ -321,8 +323,66 @@ class Actions:
 			Infos.box_app(5)
 
 	@classmethod
-	def export(cls, **kwargs):
-		pass
+	def export_all(cls, **kwargs):
+		all_matiere_path = []
+		for matiere in Infos.data_path.keys():
+			html_file = '<meta charset="UTF-8">'
+			# tmp_data_matiere = {}
+			for inter in Infos.data_path[matiere].keys():
+				html_file += f"<h1>{inter}</h1>\n<details>\n"
+				# tmp_data_matiere[inter] = {}
+				for cours in Infos.data_path[matiere][inter][1:]:
+					html_file += f"<p><a href=\"{matiere}/{inter}/{cours}.html\">{cours}</a></p>\n"
+					file_data = cls.create_html_file(matiere, inter, cours)
+					# tmp_data_matiere[inter][cours] = ["# TOC", "## TOCTOC", "#QUIEST"] # Make TOC
+				html_file += "</details>\n"
+			with open(Infos.path+"/html/"+matiere+".html", "w") as f:
+				"""
+				html_file = ""
+				for inter in tmp_data_matiere.keys():
+					html_file +=
+				"""
+				f.write(str(html_file))
+			all_matiere_path += [(Infos.path+"/html/"+matiere+".html", matiere)]
+
+		with open(Infos.path+"/index.html", "w") as f:
+			index_data = '<meta charset="UTF-8">'
+			for matiere_path, matiere in all_matiere_path:
+				index_data += f"<h1><a href=\"{matiere_path}\">{matiere}</a></h1>"
+			f.write(index_data)
+	"""
+cls.toc_data = []
+for i in cls.file_data.split("\n"):
+	tmp_match = re.match("(#{1,6})\\s(.+)", i)
+	if tmp_match is not None:
+		cls.toc_data += [(len(tmp_match.group(1)), tmp_match.group(2))]
+	"""
+	
+
+	@classmethod
+	def export(cls, where_export=None, **kwargs):
+		return
+			
+	@classmethod
+	def create_matiere_html(cls, matiere):
+		if not os.path.isfile(Infos.path+"/notes/"+matiere):
+			raise FileNotFoundError("DirNotFound")
+
+	@classmethod
+	def create_html_file(cls, matiere, inter, cours):
+		gen_path = Infos.generate_path()
+		if not os.path.isfile(Infos.path+"/notes/"+matiere+"/"+inter+"/"+cours):# Si c'est un fichier export dans html
+			raise FileNotFoundError("ThisNotFound")
+		# Si le dossier n'exsitste pas tu le crée
+		if not os.path.isdir(Infos.path + "/html/" + matiere+"/"+inter): 
+			os.makedirs(Infos.path + "/html/" + matiere+"/"+inter)
+		if not os.path.isdir(Infos.path + "/html/" + matiere+"/"+inter):
+			raise FileNotFoundError("Le dossier html/matiere n'exsiste pas et n'est pas créable")
+		else:
+			html_inter_path = (Infos.path + "/html/" + matiere+"/"+inter)
+		with open(html_inter_path+"/"+cours+".html", "w") as f:
+			f.write(multi_markdown(Infos.path+"/notes/"+matiere+"/"+inter+"/"+cours , True, True))
+		
 
 	@classmethod
 	def delete(cls, **kwargs):
@@ -522,7 +582,7 @@ class Draw:
 				pass
 			# Infos.write_message(f"Box : {str(Infos.data_path) + '	'}")
 
-	# SET23         print(mouse_on) CODE HERE: ne pas metre de code bloquant: code qui nécessite une action de l'utilisateur
+	# SET23		 print(mouse_on) CODE HERE: ne pas metre de code bloquant: code qui nécessite une action de l'utilisateur
 
 	# ---------------------------------------
 	stopping: bool = False
@@ -1070,6 +1130,70 @@ def set_path():
 		raise Exception("/home/ay/Cours2022Git not found")
 
 
+def add_mathjax():
+	with open("tex-chtml.js", "r") as f:
+		return f.read()
+
+def add_css(show = True):
+	style = """
+body {
+
+}
+	"""
+	return "<style>\n" + sytle + "\n</style>"
+
+def math(show = True):
+	if show:
+		return """
+\t<script>
+\t\tMathJax = {
+\t\t\ttex: {
+\t\t\t\t inlineMath: [['$', '$'], ['\\\\(', '\\\\)']]
+\t\t\t},
+\t\t\tsvg: {
+\t\t\t\tfontCache: 'global'
+\t\t\t}
+\t\t};
+\t</script>
+\t<script id="MathJax-script" async>
+\t\t""" + add_mathjax() + """
+\t</script>""" 
+	else:
+		return ""
+
+def dark_mode(show = True):
+	if show:
+		return """
+\t<style>
+\t\tbody{
+\t\t\tbackground-color: black;
+\t\t\tcolor: white;
+\t\t}
+\t</style>"""
+	else:
+		return ""
+
+def model(body, show_math, show_dark_mode):
+	return """
+<!doctype html>
+<html lang="fr">
+<head>
+\t<meta charset="utf-8">
+\t<title>Titre de la page</title>
+\t<meta http-equiv="X-UA-Compatible" content="IE=edge">
+\t<meta name="viewport" content="width=device-width, initial-scale=1.0">
+\t\t"""+dark_mode(show_dark_mode)+"""
+\t\t"""+math(show_math)+"""
+</head>
+<body>
+"""+body+"""
+</body>
+</html>
+"""
+		
+def multi_markdown(filename, math, dark):
+	result = subprocess.run(("multimarkdown "+filename).split(" "), stdout=subprocess.PIPE)
+	return model(result.stdout.decode('utf-8'), math, dark)
 if __name__ == '__main__':
 	if "--debug" in sys.argv:
 		debug = True
