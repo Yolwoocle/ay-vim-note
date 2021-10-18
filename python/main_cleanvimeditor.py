@@ -1171,8 +1171,9 @@ def dark_mode(show = True):
         return """
 \t<style>
 \t\tbody{
-\t\t\tbackground-color: black;
+\t\t\tbackground-color: #242424;
 \t\t\tcolor: white;
+\t\t\tfont-family: "Gill Sans", sans-serif;
 \t\t}
 \t</style>"""
     else:
